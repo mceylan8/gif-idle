@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+:root {
+  --amber: #ffb000;
+  --bg-deep: #0b0a08;
+  --bg-mid: #15120e;
+  --font-hud: 'Share Tech Mono', ui-monospace, monospace;
+  --font-channel: 'VT323', 'Share Tech Mono', monospace;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-hud);
+  background:
+    linear-gradient(180deg, rgba(255, 176, 0, 0.03), transparent 28%),
+    radial-gradient(ellipse at top, #1a1610 0%, var(--bg-deep) 55%);
+  background-color: var(--bg-deep);
+  color: var(--amber);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: 0;
+}
+
+button {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
+}
