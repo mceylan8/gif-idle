@@ -39,7 +39,7 @@ A Vite + React + TypeScript app that feels like an old CRT television auto-zappi
 | **Pause / Play** button or `Space` | Pause or resume auto-zap |
 | **Next** button or `→` | Jump to the next channel immediately |
 
-Channels advance every ~4.5 seconds with a crossfade. Images are preloaded before they appear. Failed batch fetches retry automatically after a short delay without blanking the screen.
+Channels advance every ~3 minutes with a crossfade. Images are preloaded before they appear. Failed batch fetches retry automatically after a short delay without blanking the screen.
 
 ### Modes (HUD)
 

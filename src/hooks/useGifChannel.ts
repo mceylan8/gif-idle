@@ -8,7 +8,7 @@ import {
 } from '../lib/klipy';
 import { presets } from '../lib/presets';
 
-export const CHANNEL_INTERVAL_MS = 4500;
+export const CHANNEL_INTERVAL_MS = 180_000;
 const RETRY_DELAY_MS = 1600;
 const SEARCH_DEBOUNCE_MS = 500;
 const PER_PAGE = 50;
