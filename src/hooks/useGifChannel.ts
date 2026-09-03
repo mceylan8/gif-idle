@@ -8,7 +8,8 @@ import {
 } from '../lib/klipy';
 import { presets } from '../lib/presets';
 
-export const CHANNEL_INTERVAL_MS = 180_000;
+export const CHANNEL_INTERVAL_MS = 90_000;
+export const SEARCH_ZAP_INTERVAL_MS = 8_000;
 const RETRY_DELAY_MS = 1600;
 const SEARCH_DEBOUNCE_MS = 500;
 const PER_PAGE = 50;
@@ -68,6 +69,7 @@ function reducer(state: ChannelState, action: Action): ChannelState {
         ...state,
         channel: 0,
         error: null,
+        paused: false,
         progressKey: state.progressKey + 1,
         bootstrapping: state.gif === null,
       };
@@ -84,6 +86,10 @@ function pickRandomId(ids: string[]): string | null {
 
 function sourceKeyOf(source: FeedSource): string {
   return source.type === 'trending' ? 'trending' : `search:${source.query.toLowerCase()}`;
+}
+
+function intervalForSource(source: FeedSource): number {
+  return source.type === 'search' ? SEARCH_ZAP_INTERVAL_MS : CHANNEL_INTERVAL_MS;
 }
 
 export function useGifChannel() {
@@ -153,7 +159,7 @@ export function useGifChannel() {
     hasNextRef.current = true;
     prefetchingRef.current = false;
     advancingRef.current = false;
-    remainingMsRef.current = CHANNEL_INTERVAL_MS;
+    remainingMsRef.current = intervalForSource(sourceRef.current);
   }, []);
 
   const rememberRecent = useCallback((id: string) => {
@@ -308,7 +314,7 @@ export function useGifChannel() {
       await preloadImage(nextGif.url);
       if (!mountedRef.current || generation !== generationRef.current) return;
 
-      remainingMsRef.current = CHANNEL_INTERVAL_MS;
+      remainingMsRef.current = intervalForSource(source);
       dispatch({ type: 'SHOW_GIF', gif: nextGif });
       void prefetchIfNeeded(source);
     } catch (err) {
@@ -319,9 +325,7 @@ export function useGifChannel() {
         void advanceRef.current();
       }, RETRY_DELAY_MS);
     } finally {
-      if (generation === generationRef.current) {
-        advancingRef.current = false;
-      }
+      advancingRef.current = false;
     }
   }, [clearRetry, drawFromPool, ensurePoolReady, prefetchIfNeeded]);
 
@@ -336,6 +340,7 @@ export function useGifChannel() {
     generationRef.current += 1;
     clearRetry();
     resetPool();
+    remainingMsRef.current = intervalForSource(feedSource);
     dispatch({ type: 'SOURCE_RESET' });
     void advanceRef.current();
 
@@ -359,7 +364,7 @@ export function useGifChannel() {
     const budget = remainingMsRef.current;
 
     const timerId = setTimeout(() => {
-      remainingMsRef.current = CHANNEL_INTERVAL_MS;
+      remainingMsRef.current = intervalForSource(sourceRef.current);
       void advance();
     }, budget);
 
@@ -375,7 +380,7 @@ export function useGifChannel() {
   }, []);
 
   const next = useCallback(() => {
-    remainingMsRef.current = CHANNEL_INTERVAL_MS;
+    remainingMsRef.current = intervalForSource(sourceRef.current);
     dispatch({ type: 'BUMP_PROGRESS' });
     void advance();
   }, [advance]);
@@ -453,7 +458,7 @@ export function useGifChannel() {
     error: state.error,
     progressKey: state.progressKey,
     bootstrapping: state.bootstrapping,
-    cycleMs: CHANNEL_INTERVAL_MS,
+    cycleMs: intervalForSource(feedSource),
     mode,
     searchInput,
     activePresetQuery,

@@ -39,15 +39,15 @@ A Vite + React + TypeScript app that feels like an old CRT television auto-zappi
 | **Pause / Play** button or `Space` | Pause or resume auto-zap |
 | **Next** button or `→` | Jump to the next channel immediately |
 
-Channels advance every ~3 minutes with a crossfade. Images are preloaded before they appear. Failed batch fetches retry automatically after a short delay without blanking the screen.
+Channels advance every ~1.5 minutes with a crossfade. Images are preloaded before they appear. Failed batch fetches retry automatically after a short delay without blanking the screen.
 
 ### Modes (HUD)
 
 | Mode | Behavior |
 | --- | --- |
 | **Zap** | Trending batch, random channel hop (default) |
-| **Search** | Type a query (aliases like `tmnt` expand locally); empty field falls back to trending |
-| **Presets** | Chip buttons for curated queries (`src/lib/presets.ts`) |
+| **Search** | Type a query (aliases like `tmnt` expand locally); empty field falls back to trending. Results auto-zap every ~8 seconds. |
+| **Presets** | Chip buttons for curated queries (`src/lib/presets.ts`). Same auto-zap as Search. |
 
 Search aliases live in `src/lib/aliases.ts` and are easy to extend.
 
