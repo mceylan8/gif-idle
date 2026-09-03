@@ -191,14 +191,10 @@ export function useGifChannel() {
               q: source.query,
               page,
               perPage: PER_PAGE,
-              rating: 'pg',
-              locale: 'de_DE',
             })
           : await fetchTrendingGifs({
               page,
               perPage: PER_PAGE,
-              rating: 'pg',
-              locale: 'de_DE',
             });
 
       mergePage(result.items);

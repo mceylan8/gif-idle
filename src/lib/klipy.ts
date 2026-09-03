@@ -67,8 +67,6 @@ export interface GifPage {
 export interface FetchGifOptions {
   page?: number;
   perPage?: number;
-  rating?: 'g' | 'pg' | 'pg-13' | 'r';
-  locale?: string;
 }
 
 export interface FetchSearchOptions extends FetchGifOptions {
@@ -123,19 +121,11 @@ function toChannelGif(item: KlipyGifItem): ChannelGif | null {
 }
 
 function buildCommonParams(options: FetchGifOptions = {}): URLSearchParams {
-  const {
-    page = 1,
-    perPage = 50,
-    rating = 'pg',
-    locale = 'de_DE',
-  } = options;
-
+  const { page = 1, perPage = 50 } = options;
   const clampedPerPage = Math.min(50, Math.max(8, perPage));
   return new URLSearchParams({
     per_page: String(clampedPerPage),
     page: String(page),
-    rating,
-    locale,
   });
 }
 
