@@ -13,6 +13,13 @@ export default function App() {
     progressKey,
     bootstrapping,
     cycleMs,
+    mode,
+    searchInput,
+    activePresetQuery,
+    modeLabel,
+    setMode,
+    setSearchInput,
+    selectPreset,
     togglePause,
     next,
   } = useGifChannel();
@@ -38,6 +45,13 @@ export default function App() {
                 paused={paused}
                 progressKey={progressKey}
                 cycleMs={cycleMs}
+                mode={mode}
+                modeLabel={modeLabel}
+                searchInput={searchInput}
+                activePresetQuery={activePresetQuery}
+                onModeChange={setMode}
+                onSearchInputChange={setSearchInput}
+                onSelectPreset={selectPreset}
               />
             </div>
 
@@ -58,7 +72,7 @@ export default function App() {
         <Controls paused={paused} onTogglePause={togglePause} onNext={next} />
 
         <p className={styles.hint}>
-          Space pauses · Right arrow zaps next · Channels refresh every few seconds
+          Space pauses · Right arrow zaps next · Switch Zap / Search / Presets on the screen
         </p>
       </main>
     </div>
