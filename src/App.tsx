@@ -2,6 +2,7 @@ import { Controls } from './components/Controls';
 import { Hud } from './components/Hud';
 import { TVScreen } from './components/TVScreen';
 import { useGifChannel } from './hooks/useGifChannel';
+import { useIdleMode } from './hooks/useIdleMode';
 import styles from './App.module.css';
 
 export default function App() {
@@ -23,9 +24,10 @@ export default function App() {
     togglePause,
     next,
   } = useGifChannel();
+  const { lightsOut, toggle: toggleLightsOut } = useIdleMode();
 
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ${lightsOut ? styles.pageLightsOut : ''}`}>
       <div className={styles.glow} aria-hidden="true" />
 
       <main className={styles.stage}>
@@ -49,6 +51,7 @@ export default function App() {
                 modeLabel={modeLabel}
                 searchInput={searchInput}
                 activePresetQuery={activePresetQuery}
+                lightsOut={lightsOut}
                 onModeChange={setMode}
                 onSearchInputChange={setSearchInput}
                 onSelectPreset={selectPreset}
@@ -69,10 +72,16 @@ export default function App() {
           </div>
         </section>
 
-        <Controls paused={paused} onTogglePause={togglePause} onNext={next} />
+        <Controls
+          paused={paused}
+          lightsOut={lightsOut}
+          onTogglePause={togglePause}
+          onNext={next}
+          onToggleLightsOut={toggleLightsOut}
+        />
 
         <p className={styles.hint}>
-          Space pauses · Right arrow zaps next · Switch Zap / Search / Presets on the screen
+          Space pauses · Right arrow zaps next · L lights out · Idle after a few seconds
         </p>
       </main>
     </div>

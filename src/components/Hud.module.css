@@ -231,6 +231,35 @@
   animation: blink 1.2s steps(1) infinite;
 }
 
+.hudLightsOut {
+  justify-content: flex-end;
+  padding: 1.25rem 1.4rem 1.5rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, transparent 42%);
+}
+
+.hudLightsOut .topRow,
+.hudLightsOut .searchRow,
+.hudLightsOut .presetRow,
+.hudLightsOut .progressTrack,
+.hudLightsOut .pauseBadge {
+  display: none;
+}
+
+.hudLightsOut .bottomRow {
+  justify-content: center;
+  padding-bottom: 0;
+}
+
+.hudLightsOut .title {
+  max-width: min(90%, 40rem);
+  text-align: center;
+  font-size: clamp(0.9rem, 2.4vw, 1.25rem);
+  letter-spacing: 0.12em;
+  text-shadow:
+    0 0 16px rgba(255, 176, 0, 0.7),
+    0 2px 18px rgba(0, 0, 0, 0.8);
+}
+
 .progressTrack {
   position: absolute;
   left: 1.15rem;

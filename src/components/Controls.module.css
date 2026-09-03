@@ -64,6 +64,41 @@
   opacity: 0.65;
 }
 
+.controlsLightsOut {
+  margin-top: 1.5rem;
+}
+
+.controlsLightsOut .button {
+  border-color: rgba(255, 176, 0, 0.7);
+  background: linear-gradient(180deg, #3a3018 0%, #1a1408 100%);
+  box-shadow:
+    0 0 18px rgba(255, 176, 0, 0.35),
+    0 0 36px rgba(255, 176, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  animation: controlGlow 2.4s ease-in-out infinite alternate;
+}
+
+.buttonIdleActive {
+  color: #1a1200;
+  background: linear-gradient(180deg, #ffd56a, #ffb000) !important;
+  border-color: #ffb000 !important;
+}
+
+@keyframes controlGlow {
+  from {
+    box-shadow:
+      0 0 12px rgba(255, 176, 0, 0.28),
+      0 0 24px rgba(255, 176, 0, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  to {
+    box-shadow:
+      0 0 22px rgba(255, 176, 0, 0.55),
+      0 0 48px rgba(255, 176, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  }
+}
+
 @media (max-width: 640px) {
   .controls {
     width: 100%;

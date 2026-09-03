@@ -2,13 +2,24 @@ import styles from './Controls.module.css';
 
 interface ControlsProps {
   paused: boolean;
+  lightsOut: boolean;
   onTogglePause: () => void;
   onNext: () => void;
+  onToggleLightsOut: () => void;
 }
 
-export function Controls({ paused, onTogglePause, onNext }: ControlsProps) {
+export function Controls({
+  paused,
+  lightsOut,
+  onTogglePause,
+  onNext,
+  onToggleLightsOut,
+}: ControlsProps) {
   return (
-    <div className={styles.controls}>
+    <div
+      className={`${styles.controls} ${lightsOut ? styles.controlsLightsOut : ''}`}
+      data-keep-idle
+    >
       <button
         type="button"
         className={styles.button}
@@ -33,6 +44,20 @@ export function Controls({ paused, onTogglePause, onNext }: ControlsProps) {
         </span>
         <span>Next</span>
         <kbd className={styles.kbd}>→</kbd>
+      </button>
+
+      <button
+        type="button"
+        className={`${styles.button} ${lightsOut ? styles.buttonIdleActive : ''}`}
+        onClick={onToggleLightsOut}
+        aria-label={lightsOut ? 'Exit idle mode' : 'Enter idle mode'}
+        aria-pressed={lightsOut}
+      >
+        <span className={styles.glyph} aria-hidden="true">
+          ◉
+        </span>
+        <span>{lightsOut ? 'Wake' : 'Idle'}</span>
+        <kbd className={styles.kbd}>L</kbd>
       </button>
     </div>
   );

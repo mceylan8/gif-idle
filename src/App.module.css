@@ -129,6 +129,45 @@
   text-align: center;
 }
 
+.pageLightsOut {
+  padding: 0;
+  background: #000;
+}
+
+.pageLightsOut .glow {
+  opacity: 0.35;
+}
+
+.pageLightsOut .stage {
+  width: min(100vw, 1600px);
+  min-height: 100svh;
+  justify-content: center;
+  padding: 0 0 1.25rem;
+}
+
+.pageLightsOut .header,
+.pageLightsOut .hint,
+.pageLightsOut .speakerGrill,
+.pageLightsOut .knobs {
+  display: none;
+}
+
+.pageLightsOut .tv {
+  width: 100%;
+}
+
+.pageLightsOut .bezel {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.pageLightsOut .screenWrap {
+  border-radius: 0;
+  box-shadow: none;
+}
+
 @keyframes ambientPulse {
   from {
     opacity: 0.75;

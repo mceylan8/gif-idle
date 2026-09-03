@@ -38,6 +38,7 @@ A Vite + React + TypeScript app that feels like an old CRT television auto-zappi
 | --- | --- |
 | **Pause / Play** button or `Space` | Pause or resume auto-zap |
 | **Next** button or `→` | Jump to the next channel immediately |
+| **Idle** button or `L` | Lights-out: GIF + title + glowing controls. Also enters after ~12s idle. `Esc` or click the screen to wake. |
 
 Channels advance every ~1.5 minutes with a crossfade. Images are preloaded before they appear. Failed batch fetches retry automatically after a short delay without blanking the screen.
 

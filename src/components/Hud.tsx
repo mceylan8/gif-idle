@@ -13,6 +13,7 @@ interface HudProps {
   modeLabel: string;
   searchInput: string;
   activePresetQuery: string | null;
+  lightsOut: boolean;
   onModeChange: (mode: ZapMode) => void;
   onSearchInputChange: (value: string) => void;
   onSelectPreset: (query: string, label: string) => void;
@@ -35,6 +36,7 @@ export function Hud({
   modeLabel,
   searchInput,
   activePresetQuery,
+  lightsOut,
   onModeChange,
   onSearchInputChange,
   onSelectPreset,
@@ -42,7 +44,7 @@ export function Hud({
   const channelLabel = String(Math.max(channel, 0)).padStart(2, '0');
 
   return (
-    <div className={styles.hud}>
+    <div className={`${styles.hud} ${lightsOut ? styles.hudLightsOut : ''}`}>
       <div className={styles.topRow}>
         <div className={styles.topLeft}>
           <span className={styles.brand}>IDLE·TV</span>
