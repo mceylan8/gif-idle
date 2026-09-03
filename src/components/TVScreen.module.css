@@ -1,7 +1,7 @@
 .screen {
   position: relative;
   width: 100%;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 18px;
   background: #050505;
