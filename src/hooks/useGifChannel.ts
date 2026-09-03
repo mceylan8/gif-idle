@@ -138,10 +138,6 @@ export function useGifChannel() {
 
   const feedKey = sourceKeyOf(feedSource);
 
-  useEffect(() => {
-    sourceRef.current = feedSource;
-  }, [feedSource]);
-
   const clearRetry = useCallback(() => {
     if (retryTimerRef.current !== null) {
       clearTimeout(retryTimerRef.current);
@@ -187,8 +183,8 @@ export function useGifChannel() {
   }, []);
 
   const fetchPage = useCallback(
-    async (page: number) => {
-      const source = sourceRef.current;
+    async (page: number, source: FeedSource) => {
+      // Explicit endpoint switch: search query → /gifs/search, otherwise /gifs/trending (never trending+q).
       const result =
         source.type === 'search'
           ? await fetchSearchGifs({
@@ -213,55 +209,61 @@ export function useGifChannel() {
     [mergePage],
   );
 
-  const prefetchIfNeeded = useCallback(async () => {
-    if (prefetchingRef.current || !mountedRef.current) return;
-    if (unusedIdsRef.current.size >= REFILL_THRESHOLD) return;
+  const prefetchIfNeeded = useCallback(
+    async (source: FeedSource) => {
+      if (prefetchingRef.current || !mountedRef.current) return;
+      if (unusedIdsRef.current.size >= REFILL_THRESHOLD) return;
 
-    const generation = generationRef.current;
-    prefetchingRef.current = true;
-    try {
-      if (hasNextRef.current) {
-        await fetchPage(nextPageRef.current);
-      } else if (poolRef.current.size > 0) {
-        refillUnusedFromPool();
-        if (unusedIdsRef.current.size < REFILL_THRESHOLD) {
-          hasNextRef.current = true;
-          nextPageRef.current = 1;
-          await fetchPage(1);
+      const generation = generationRef.current;
+      prefetchingRef.current = true;
+      try {
+        if (hasNextRef.current) {
+          await fetchPage(nextPageRef.current, source);
+        } else if (poolRef.current.size > 0) {
+          refillUnusedFromPool();
+          if (unusedIdsRef.current.size < REFILL_THRESHOLD) {
+            hasNextRef.current = true;
+            nextPageRef.current = 1;
+            await fetchPage(1, source);
+          }
+        }
+      } catch {
+        // Background refill failures are non-fatal.
+      } finally {
+        if (generation === generationRef.current) {
+          prefetchingRef.current = false;
         }
       }
-    } catch {
-      // Background refill failures are non-fatal.
-    } finally {
-      if (generation === generationRef.current) {
-        prefetchingRef.current = false;
+    },
+    [fetchPage, refillUnusedFromPool],
+  );
+
+  const ensurePoolReady = useCallback(
+    async (source: FeedSource) => {
+      if (unusedIdsRef.current.size > 0) {
+        void prefetchIfNeeded(source);
+        return;
       }
-    }
-  }, [fetchPage, refillUnusedFromPool]);
 
-  const ensurePoolReady = useCallback(async () => {
-    if (unusedIdsRef.current.size > 0) {
-      void prefetchIfNeeded();
-      return;
-    }
+      if (poolRef.current.size === 0) {
+        await fetchPage(1, source);
+      } else {
+        refillUnusedFromPool();
+        if (unusedIdsRef.current.size === 0) {
+          hasNextRef.current = true;
+          nextPageRef.current = 1;
+          await fetchPage(1, source);
+        }
+      }
 
-    if (poolRef.current.size === 0) {
-      await fetchPage(1);
-    } else {
-      refillUnusedFromPool();
       if (unusedIdsRef.current.size === 0) {
-        hasNextRef.current = true;
-        nextPageRef.current = 1;
-        await fetchPage(1);
+        throw new Error('Klipy returned no usable GIFs');
       }
-    }
 
-    if (unusedIdsRef.current.size === 0) {
-      throw new Error('Klipy returned no usable GIFs');
-    }
-
-    void prefetchIfNeeded();
-  }, [fetchPage, prefetchIfNeeded, refillUnusedFromPool]);
+      void prefetchIfNeeded(source);
+    },
+    [fetchPage, prefetchIfNeeded, refillUnusedFromPool],
+  );
 
   const drawFromPool = useCallback((): ChannelGif => {
     const recent = new Set(recentIdsRef.current);
@@ -300,9 +302,10 @@ export function useGifChannel() {
     advancingRef.current = true;
     clearRetry();
     const generation = generationRef.current;
+    const source = sourceRef.current;
 
     try {
-      await ensurePoolReady();
+      await ensurePoolReady(source);
       if (!mountedRef.current || generation !== generationRef.current) return;
 
       const nextGif = drawFromPool();
@@ -311,7 +314,7 @@ export function useGifChannel() {
 
       remainingMsRef.current = CHANNEL_INTERVAL_MS;
       dispatch({ type: 'SHOW_GIF', gif: nextGif });
-      void prefetchIfNeeded();
+      void prefetchIfNeeded(source);
     } catch (err) {
       if (!mountedRef.current || generation !== generationRef.current) return;
       const message = err instanceof Error ? err.message : 'Signal lost';
@@ -333,6 +336,7 @@ export function useGifChannel() {
   // Retune when feed source changes (mode / query / preset)
   useEffect(() => {
     mountedRef.current = true;
+    sourceRef.current = feedSource;
     generationRef.current += 1;
     clearRetry();
     resetPool();
@@ -342,7 +346,7 @@ export function useGifChannel() {
     return () => {
       clearRetry();
     };
-  }, [feedKey, clearRetry, resetPool]);
+  }, [feedKey, feedSource, clearRetry, resetPool]);
 
   useEffect(() => {
     return () => {

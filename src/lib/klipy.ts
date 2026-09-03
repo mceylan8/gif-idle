@@ -122,13 +122,43 @@ function toChannelGif(item: KlipyGifItem): ChannelGif | null {
   return { id, url, title };
 }
 
-async function fetchGifList(
-  path: 'trending' | 'search',
-  params: URLSearchParams,
-): Promise<GifPage> {
-  const response = await fetch(
-    `${KLIPY_BASE}/${getApiKey()}/gifs/${path}?${params.toString()}`,
-  );
+function buildCommonParams(options: FetchGifOptions = {}): URLSearchParams {
+  const {
+    page = 1,
+    perPage = 50,
+    rating = 'pg',
+    locale = 'de_DE',
+  } = options;
+
+  const clampedPerPage = Math.min(50, Math.max(8, perPage));
+  return new URLSearchParams({
+    per_page: String(clampedPerPage),
+    page: String(page),
+    rating,
+    locale,
+  });
+}
+
+/** Trending only — never accepts / appends `q`. */
+export function buildTrendingUrl(options: FetchGifOptions = {}): string {
+  const params = buildCommonParams(options);
+  return `${KLIPY_BASE}/${getApiKey()}/gifs/trending?${params.toString()}`;
+}
+
+/** Search only — always hits `/gifs/search` with required `q`. */
+export function buildSearchUrl(query: string, options: FetchGifOptions = {}): string {
+  const term = query.trim();
+  if (!term) {
+    throw new Error('Search query is empty');
+  }
+
+  const params = buildCommonParams(options);
+  params.set('q', term);
+  return `${KLIPY_BASE}/${getApiKey()}/gifs/search?${params.toString()}`;
+}
+
+async function fetchGifPage(url: string): Promise<GifPage> {
+  const response = await fetch(url);
 
   let json: KlipyListResponse | null = null;
   try {
@@ -159,40 +189,16 @@ async function fetchGifList(
   };
 }
 
-function buildListParams(options: FetchGifOptions): URLSearchParams {
-  const {
-    page = 1,
-    perPage = 50,
-    rating = 'pg',
-    locale = 'de_DE',
-  } = options;
-
-  const clampedPerPage = Math.min(50, Math.max(8, perPage));
-  return new URLSearchParams({
-    per_page: String(clampedPerPage),
-    page: String(page),
-    rating,
-    locale,
-  });
-}
-
 export async function fetchTrendingGifs(
   options: FetchGifOptions = {},
 ): Promise<GifPage> {
-  return fetchGifList('trending', buildListParams(options));
+  return fetchGifPage(buildTrendingUrl(options));
 }
 
 export async function fetchSearchGifs(
   options: FetchSearchOptions,
 ): Promise<GifPage> {
-  const query = options.q.trim();
-  if (!query) {
-    throw new Error('Search query is empty');
-  }
-
-  const params = buildListParams(options);
-  params.set('q', query);
-  return fetchGifList('search', params);
+  return fetchGifPage(buildSearchUrl(options.q, options));
 }
 
 export function preloadImage(url: string): Promise<void> {
