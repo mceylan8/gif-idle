@@ -14,4 +14,8 @@ export const presets: Preset[] = [
   { label: 'Gaming', query: 'gaming' },
   { label: 'Comics', query: 'comics' },
   { label: 'Cartoons', query: 'cartoons' },
+  { label: 'Movies', query: 'movie scene' },
+  { label: 'Wrestling', query: 'wrestling' },
+  { label: 'Reactions', query: 'reaction' },
+  { label: '90s', query: '90s nostalgia' },
 ];
