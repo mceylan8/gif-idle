@@ -35,7 +35,6 @@ type Action =
   | { type: 'SHOW_GIF'; gif: ChannelGif }
   | { type: 'SET_ERROR'; message: string }
   | { type: 'TOGGLE_PAUSE' }
-  | { type: 'BUMP_PROGRESS' }
   | { type: 'SOURCE_RESET' };
 
 const initialState: ChannelState = {
@@ -62,8 +61,6 @@ function reducer(state: ChannelState, action: Action): ChannelState {
       return { ...state, error: action.message, bootstrapping: false };
     case 'TOGGLE_PAUSE':
       return { ...state, paused: !state.paused };
-    case 'BUMP_PROGRESS':
-      return { ...state, progressKey: state.progressKey + 1 };
     case 'SOURCE_RESET':
       return {
         ...state,
@@ -100,11 +97,12 @@ export function useGifChannel() {
   const [activePresetQuery, setActivePresetQuery] = useState<string | null>(null);
   const [activePresetLabel, setActivePresetLabel] = useState<string | null>(null);
 
-  const remainingMsRef = useRef(CHANNEL_INTERVAL_MS);
   const advancingRef = useRef(false);
   const prefetchingRef = useRef(false);
   const mountedRef = useRef(true);
+  const pausedRef = useRef(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const advanceRef = useRef<() => Promise<void>>(async () => undefined);
   const generationRef = useRef(0);
   const sourceRef = useRef<FeedSource>({ type: 'trending' });
@@ -151,6 +149,24 @@ export function useGifChannel() {
     }
   }, []);
 
+  const clearSchedule = useCallback(() => {
+    if (scheduleTimerRef.current !== null) {
+      clearTimeout(scheduleTimerRef.current);
+      scheduleTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleNext = useCallback(() => {
+    clearSchedule();
+    if (!mountedRef.current || pausedRef.current) return;
+
+    const wait = intervalForSource(sourceRef.current);
+    scheduleTimerRef.current = setTimeout(() => {
+      scheduleTimerRef.current = null;
+      void advanceRef.current();
+    }, wait);
+  }, [clearSchedule]);
+
   const resetPool = useCallback(() => {
     poolRef.current.clear();
     unusedIdsRef.current.clear();
@@ -159,7 +175,6 @@ export function useGifChannel() {
     hasNextRef.current = true;
     prefetchingRef.current = false;
     advancingRef.current = false;
-    remainingMsRef.current = intervalForSource(sourceRef.current);
   }, []);
 
   const rememberRecent = useCallback((id: string) => {
@@ -311,11 +326,15 @@ export function useGifChannel() {
       if (!mountedRef.current || generation !== generationRef.current) return;
 
       const nextGif = drawFromPool();
-      await preloadImage(nextGif.url);
+      try {
+        await preloadImage(nextGif.url);
+      } catch {
+        // Still switch — a broken file should not freeze the channel.
+      }
       if (!mountedRef.current || generation !== generationRef.current) return;
 
-      remainingMsRef.current = intervalForSource(source);
       dispatch({ type: 'SHOW_GIF', gif: nextGif });
+      scheduleNext();
       void prefetchIfNeeded(source);
     } catch (err) {
       if (!mountedRef.current || generation !== generationRef.current) return;
@@ -327,7 +346,7 @@ export function useGifChannel() {
     } finally {
       advancingRef.current = false;
     }
-  }, [clearRetry, drawFromPool, ensurePoolReady, prefetchIfNeeded]);
+  }, [clearRetry, drawFromPool, ensurePoolReady, prefetchIfNeeded, scheduleNext]);
 
   useEffect(() => {
     advanceRef.current = advance;
@@ -338,52 +357,42 @@ export function useGifChannel() {
     mountedRef.current = true;
     sourceRef.current = feedSource;
     generationRef.current += 1;
+    pausedRef.current = false;
     clearRetry();
+    clearSchedule();
     resetPool();
-    remainingMsRef.current = intervalForSource(feedSource);
     dispatch({ type: 'SOURCE_RESET' });
     void advanceRef.current();
 
     return () => {
       clearRetry();
+      clearSchedule();
     };
-  }, [feedKey, feedSource, clearRetry, resetPool]);
+  }, [feedKey, feedSource, clearRetry, clearSchedule, resetPool]);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
       clearRetry();
+      clearSchedule();
     };
-  }, [clearRetry]);
-
-  // Auto-advance timer (pause-aware)
-  useEffect(() => {
-    if (state.paused || !state.gif || state.error) return;
-
-    const startedAt = Date.now();
-    const budget = remainingMsRef.current;
-
-    const timerId = setTimeout(() => {
-      remainingMsRef.current = intervalForSource(sourceRef.current);
-      void advance();
-    }, budget);
-
-    return () => {
-      clearTimeout(timerId);
-      const elapsed = Date.now() - startedAt;
-      remainingMsRef.current = Math.max(0, budget - elapsed);
-    };
-  }, [state.paused, state.gif, state.progressKey, state.error, advance]);
+  }, [clearRetry, clearSchedule]);
 
   const togglePause = useCallback(() => {
+    const nextPaused = !pausedRef.current;
+    pausedRef.current = nextPaused;
     dispatch({ type: 'TOGGLE_PAUSE' });
-  }, []);
+    if (nextPaused) {
+      clearSchedule();
+    } else {
+      scheduleNext();
+    }
+  }, [clearSchedule, scheduleNext]);
 
   const next = useCallback(() => {
-    remainingMsRef.current = intervalForSource(sourceRef.current);
-    dispatch({ type: 'BUMP_PROGRESS' });
+    clearSchedule();
     void advance();
-  }, [advance]);
+  }, [advance, clearSchedule]);
 
   const setMode = useCallback((nextMode: ZapMode) => {
     setModeState((current) => {
