@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ChannelGif } from '../lib/giphy';
+import type { ChannelGif } from '../lib/klipy';
 import styles from './TVScreen.module.css';
 
 interface TVScreenProps {

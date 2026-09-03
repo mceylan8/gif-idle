@@ -1,8 +1,25 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { fetchRandomGif, preloadImage, type ChannelGif } from '../lib/giphy';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { resolveAlias } from '../lib/aliases';
+import {
+  fetchSearchGifs,
+  fetchTrendingGifs,
+  preloadImage,
+  type ChannelGif,
+} from '../lib/klipy';
+import { presets } from '../lib/presets';
 
 export const CHANNEL_INTERVAL_MS = 4500;
 const RETRY_DELAY_MS = 1600;
+const SEARCH_DEBOUNCE_MS = 500;
+const PER_PAGE = 50;
+const REFILL_THRESHOLD = 10;
+const RECENT_LIMIT = 16;
+
+export type ZapMode = 'zap' | 'search' | 'presets';
+
+type FeedSource =
+  | { type: 'trending' }
+  | { type: 'search'; query: string; label: string };
 
 interface ChannelState {
   gif: ChannelGif | null;
@@ -17,7 +34,8 @@ type Action =
   | { type: 'SHOW_GIF'; gif: ChannelGif }
   | { type: 'SET_ERROR'; message: string }
   | { type: 'TOGGLE_PAUSE' }
-  | { type: 'BUMP_PROGRESS' };
+  | { type: 'BUMP_PROGRESS' }
+  | { type: 'SOURCE_RESET' };
 
 const initialState: ChannelState = {
   gif: null,
@@ -45,18 +63,84 @@ function reducer(state: ChannelState, action: Action): ChannelState {
       return { ...state, paused: !state.paused };
     case 'BUMP_PROGRESS':
       return { ...state, progressKey: state.progressKey + 1 };
+    case 'SOURCE_RESET':
+      return {
+        ...state,
+        channel: 0,
+        error: null,
+        progressKey: state.progressKey + 1,
+        bootstrapping: state.gif === null,
+      };
     default:
       return state;
   }
 }
 
+function pickRandomId(ids: string[]): string | null {
+  if (ids.length === 0) return null;
+  const index = Math.floor(Math.random() * ids.length);
+  return ids[index] ?? null;
+}
+
+function sourceKeyOf(source: FeedSource): string {
+  return source.type === 'trending' ? 'trending' : `search:${source.query.toLowerCase()}`;
+}
+
 export function useGifChannel() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [mode, setModeState] = useState<ZapMode>('zap');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [activePresetQuery, setActivePresetQuery] = useState<string | null>(null);
+  const [activePresetLabel, setActivePresetLabel] = useState<string | null>(null);
+
   const remainingMsRef = useRef(CHANNEL_INTERVAL_MS);
-  const fetchingRef = useRef(false);
+  const advancingRef = useRef(false);
+  const prefetchingRef = useRef(false);
   const mountedRef = useRef(true);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const loadNextRef = useRef<() => Promise<void>>(async () => undefined);
+  const advanceRef = useRef<() => Promise<void>>(async () => undefined);
+  const generationRef = useRef(0);
+  const sourceRef = useRef<FeedSource>({ type: 'trending' });
+
+  const poolRef = useRef<Map<string, ChannelGif>>(new Map());
+  const unusedIdsRef = useRef<Set<string>>(new Set());
+  const recentIdsRef = useRef<string[]>([]);
+  const nextPageRef = useRef(1);
+  const hasNextRef = useRef(true);
+
+  // Debounce search input
+  useEffect(() => {
+    if (mode !== 'search') return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchInput.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput, mode]);
+
+  const feedSource = useMemo<FeedSource>(() => {
+    if (mode === 'search') {
+      const resolved = resolveAlias(debouncedSearch);
+      if (!resolved) return { type: 'trending' };
+      return { type: 'search', query: resolved, label: debouncedSearch };
+    }
+
+    if (mode === 'presets' && activePresetQuery) {
+      return {
+        type: 'search',
+        query: activePresetQuery,
+        label: activePresetLabel ?? activePresetQuery,
+      };
+    }
+
+    return { type: 'trending' };
+  }, [mode, debouncedSearch, activePresetQuery, activePresetLabel]);
+
+  const feedKey = sourceKeyOf(feedSource);
+
+  useEffect(() => {
+    sourceRef.current = feedSource;
+  }, [feedSource]);
 
   const clearRetry = useCallback(() => {
     if (retryTimerRef.current !== null) {
@@ -65,42 +149,207 @@ export function useGifChannel() {
     }
   }, []);
 
-  const loadNext = useCallback(async () => {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
+  const resetPool = useCallback(() => {
+    poolRef.current.clear();
+    unusedIdsRef.current.clear();
+    recentIdsRef.current = [];
+    nextPageRef.current = 1;
+    hasNextRef.current = true;
+    prefetchingRef.current = false;
+    advancingRef.current = false;
+    remainingMsRef.current = CHANNEL_INTERVAL_MS;
+  }, []);
+
+  const rememberRecent = useCallback((id: string) => {
+    const recent = recentIdsRef.current.filter((entry) => entry !== id);
+    recent.push(id);
+    if (recent.length > RECENT_LIMIT) {
+      recent.splice(0, recent.length - RECENT_LIMIT);
+    }
+    recentIdsRef.current = recent;
+  }, []);
+
+  const mergePage = useCallback((items: ChannelGif[]) => {
+    for (const item of items) {
+      if (poolRef.current.has(item.id)) continue;
+      poolRef.current.set(item.id, item);
+      unusedIdsRef.current.add(item.id);
+    }
+  }, []);
+
+  const refillUnusedFromPool = useCallback(() => {
+    const recent = new Set(recentIdsRef.current);
+    for (const id of poolRef.current.keys()) {
+      if (!recent.has(id)) {
+        unusedIdsRef.current.add(id);
+      }
+    }
+  }, []);
+
+  const fetchPage = useCallback(
+    async (page: number) => {
+      const source = sourceRef.current;
+      const result =
+        source.type === 'search'
+          ? await fetchSearchGifs({
+              q: source.query,
+              page,
+              perPage: PER_PAGE,
+              rating: 'pg',
+              locale: 'de_DE',
+            })
+          : await fetchTrendingGifs({
+              page,
+              perPage: PER_PAGE,
+              rating: 'pg',
+              locale: 'de_DE',
+            });
+
+      mergePage(result.items);
+      hasNextRef.current = result.hasNext;
+      nextPageRef.current = result.currentPage + 1;
+      return result;
+    },
+    [mergePage],
+  );
+
+  const prefetchIfNeeded = useCallback(async () => {
+    if (prefetchingRef.current || !mountedRef.current) return;
+    if (unusedIdsRef.current.size >= REFILL_THRESHOLD) return;
+
+    const generation = generationRef.current;
+    prefetchingRef.current = true;
+    try {
+      if (hasNextRef.current) {
+        await fetchPage(nextPageRef.current);
+      } else if (poolRef.current.size > 0) {
+        refillUnusedFromPool();
+        if (unusedIdsRef.current.size < REFILL_THRESHOLD) {
+          hasNextRef.current = true;
+          nextPageRef.current = 1;
+          await fetchPage(1);
+        }
+      }
+    } catch {
+      // Background refill failures are non-fatal.
+    } finally {
+      if (generation === generationRef.current) {
+        prefetchingRef.current = false;
+      }
+    }
+  }, [fetchPage, refillUnusedFromPool]);
+
+  const ensurePoolReady = useCallback(async () => {
+    if (unusedIdsRef.current.size > 0) {
+      void prefetchIfNeeded();
+      return;
+    }
+
+    if (poolRef.current.size === 0) {
+      await fetchPage(1);
+    } else {
+      refillUnusedFromPool();
+      if (unusedIdsRef.current.size === 0) {
+        hasNextRef.current = true;
+        nextPageRef.current = 1;
+        await fetchPage(1);
+      }
+    }
+
+    if (unusedIdsRef.current.size === 0) {
+      throw new Error('Klipy returned no usable GIFs');
+    }
+
+    void prefetchIfNeeded();
+  }, [fetchPage, prefetchIfNeeded, refillUnusedFromPool]);
+
+  const drawFromPool = useCallback((): ChannelGif => {
+    const recent = new Set(recentIdsRef.current);
+    let candidates = [...unusedIdsRef.current].filter((id) => !recent.has(id));
+
+    if (candidates.length === 0) {
+      candidates = [...unusedIdsRef.current];
+    }
+
+    if (candidates.length === 0) {
+      refillUnusedFromPool();
+      candidates = [...unusedIdsRef.current].filter((id) => !recent.has(id));
+      if (candidates.length === 0) {
+        candidates = [...unusedIdsRef.current];
+      }
+    }
+
+    const id = pickRandomId(candidates);
+    if (!id) {
+      throw new Error('Channel pool exhausted');
+    }
+
+    unusedIdsRef.current.delete(id);
+    rememberRecent(id);
+
+    const gif = poolRef.current.get(id);
+    if (!gif) {
+      throw new Error('Missing GIF in pool');
+    }
+
+    return gif;
+  }, [refillUnusedFromPool, rememberRecent]);
+
+  const advance = useCallback(async () => {
+    if (advancingRef.current) return;
+    advancingRef.current = true;
     clearRetry();
+    const generation = generationRef.current;
 
     try {
-      const nextGif = await fetchRandomGif();
+      await ensurePoolReady();
+      if (!mountedRef.current || generation !== generationRef.current) return;
+
+      const nextGif = drawFromPool();
       await preloadImage(nextGif.url);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || generation !== generationRef.current) return;
+
       remainingMsRef.current = CHANNEL_INTERVAL_MS;
       dispatch({ type: 'SHOW_GIF', gif: nextGif });
+      void prefetchIfNeeded();
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || generation !== generationRef.current) return;
       const message = err instanceof Error ? err.message : 'Signal lost';
       dispatch({ type: 'SET_ERROR', message });
       retryTimerRef.current = setTimeout(() => {
-        void loadNextRef.current();
+        void advanceRef.current();
       }, RETRY_DELAY_MS);
     } finally {
-      fetchingRef.current = false;
+      if (generation === generationRef.current) {
+        advancingRef.current = false;
+      }
     }
-  }, [clearRetry]);
+  }, [clearRetry, drawFromPool, ensurePoolReady, prefetchIfNeeded]);
 
   useEffect(() => {
-    loadNextRef.current = loadNext;
-  }, [loadNext]);
+    advanceRef.current = advance;
+  }, [advance]);
 
-  // Initial load
+  // Retune when feed source changes (mode / query / preset)
   useEffect(() => {
     mountedRef.current = true;
-    void loadNext();
+    generationRef.current += 1;
+    clearRetry();
+    resetPool();
+    dispatch({ type: 'SOURCE_RESET' });
+    void advanceRef.current();
+
+    return () => {
+      clearRetry();
+    };
+  }, [feedKey, clearRetry, resetPool]);
+
+  useEffect(() => {
     return () => {
       mountedRef.current = false;
       clearRetry();
     };
-  }, [loadNext, clearRetry]);
+  }, [clearRetry]);
 
   // Auto-advance timer (pause-aware)
   useEffect(() => {
@@ -111,7 +360,7 @@ export function useGifChannel() {
 
     const timerId = setTimeout(() => {
       remainingMsRef.current = CHANNEL_INTERVAL_MS;
-      void loadNext();
+      void advance();
     }, budget);
 
     return () => {
@@ -119,7 +368,7 @@ export function useGifChannel() {
       const elapsed = Date.now() - startedAt;
       remainingMsRef.current = Math.max(0, budget - elapsed);
     };
-  }, [state.paused, state.gif, state.progressKey, state.error, loadNext]);
+  }, [state.paused, state.gif, state.progressKey, state.error, advance]);
 
   const togglePause = useCallback(() => {
     dispatch({ type: 'TOGGLE_PAUSE' });
@@ -128,10 +377,43 @@ export function useGifChannel() {
   const next = useCallback(() => {
     remainingMsRef.current = CHANNEL_INTERVAL_MS;
     dispatch({ type: 'BUMP_PROGRESS' });
-    void loadNext();
-  }, [loadNext]);
+    void advance();
+  }, [advance]);
 
-  // Keyboard: Space = pause, ArrowRight = next
+  const setMode = useCallback((nextMode: ZapMode) => {
+    setModeState((current) => {
+      if (current === nextMode) return current;
+
+      if (nextMode === 'zap') {
+        setActivePresetQuery(null);
+        setActivePresetLabel(null);
+      }
+
+      if (nextMode === 'search') {
+        setActivePresetQuery(null);
+        setActivePresetLabel(null);
+        setDebouncedSearch(searchInput.trim());
+      }
+
+      if (nextMode === 'presets') {
+        const first = presets[0];
+        if (first) {
+          setActivePresetQuery(first.query);
+          setActivePresetLabel(first.label);
+        }
+      }
+
+      return nextMode;
+    });
+  }, [searchInput]);
+
+  const selectPreset = useCallback((query: string, label: string) => {
+    setModeState('presets');
+    setActivePresetQuery(query);
+    setActivePresetLabel(label);
+  }, []);
+
+  // Keyboard: Space = pause, ArrowRight = next (ignored while typing)
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -157,6 +439,13 @@ export function useGifChannel() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [togglePause, next]);
 
+  const modeLabel =
+    feedSource.type === 'trending'
+      ? 'ZAP'
+      : mode === 'presets'
+        ? `PRESET · ${feedSource.label}`
+        : `SEARCH · ${feedSource.label}`;
+
   return {
     gif: state.gif,
     channel: state.channel,
@@ -165,6 +454,13 @@ export function useGifChannel() {
     progressKey: state.progressKey,
     bootstrapping: state.bootstrapping,
     cycleMs: CHANNEL_INTERVAL_MS,
+    mode,
+    searchInput,
+    activePresetQuery,
+    modeLabel,
+    setMode,
+    setSearchInput,
+    selectPreset,
     togglePause,
     next,
   };
