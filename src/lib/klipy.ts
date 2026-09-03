@@ -191,11 +191,38 @@ export async function fetchSearchGifs(
   return fetchGifPage(buildSearchUrl(options.q, options));
 }
 
-export function preloadImage(url: string): Promise<void> {
+const pendingFrames = new Map<string, HTMLImageElement>();
+
+export function preloadImage(url: string): Promise<HTMLImageElement> {
+  const cached = pendingFrames.get(url);
+  if (cached?.complete && cached.naturalWidth > 0) {
+    return Promise.resolve(cached);
+  }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve();
+    img.alt = '';
+    img.draggable = false;
+    img.decoding = 'async';
+    img.onload = () => {
+      pendingFrames.set(url, img);
+      // Bound the handoff cache — TVScreen should claim promptly.
+      while (pendingFrames.size > 8) {
+        const oldest = pendingFrames.keys().next().value;
+        if (oldest === undefined) break;
+        pendingFrames.delete(oldest);
+      }
+      resolve(img);
+    };
     img.onerror = () => reject(new Error('Failed to preload image'));
     img.src = url;
   });
 }
+
+/** Take ownership of a preloaded frame so React does not fetch/decode it again. */
+export function claimPreloadedImage(url: string): HTMLImageElement | null {
+  const img = pendingFrames.get(url) ?? null;
+  if (img) pendingFrames.delete(url);
+  return img;
+}
+

@@ -15,6 +15,7 @@ const SEARCH_DEBOUNCE_MS = 500;
 const PER_PAGE = 50;
 const REFILL_THRESHOLD = 10;
 const RECENT_LIMIT = 16;
+const MAX_POOL_SIZE = 400;
 
 export type ZapMode = 'zap' | 'search' | 'presets';
 
@@ -189,6 +190,14 @@ export function useGifChannel() {
   const mergePage = useCallback((items: ChannelGif[]) => {
     for (const item of items) {
       if (poolRef.current.has(item.id)) continue;
+
+      while (poolRef.current.size >= MAX_POOL_SIZE) {
+        const oldestKey = poolRef.current.keys().next().value;
+        if (oldestKey === undefined) break;
+        poolRef.current.delete(oldestKey);
+        unusedIdsRef.current.delete(oldestKey);
+      }
+
       poolRef.current.set(item.id, item);
       unusedIdsRef.current.add(item.id);
     }

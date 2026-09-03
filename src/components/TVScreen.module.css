@@ -10,6 +10,12 @@
     inset 0 0 60px rgba(0, 0, 0, 0.85);
 }
 
+.frameHost {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
 .frame {
   position: absolute;
   inset: 0;
