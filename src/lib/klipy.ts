@@ -130,14 +130,20 @@ async function fetchGifList(
     `${KLIPY_BASE}/${getApiKey()}/gifs/${path}?${params.toString()}`,
   );
 
-  if (!response.ok) {
-    throw new Error(`Klipy request failed (${response.status})`);
+  let json: KlipyListResponse | null = null;
+  try {
+    json = (await response.json()) as KlipyListResponse;
+  } catch {
+    json = null;
   }
 
-  const json = (await response.json()) as KlipyListResponse;
+  if (!response.ok) {
+    const apiMessage = json?.errors?.message?.join(', ');
+    throw new Error(apiMessage || `Klipy request failed (${response.status})`);
+  }
 
-  if (!json.result || !json.data?.data) {
-    const apiMessage = json.errors?.message?.join(', ');
+  if (!json?.result || !json.data?.data) {
+    const apiMessage = json?.errors?.message?.join(', ');
     throw new Error(apiMessage || 'Unexpected Klipy response');
   }
 
